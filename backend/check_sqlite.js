@@ -1,7 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'backend', 'khata_ledger.db');
+const dbPath = path.join(__dirname, 'khata_ledger.db');
 const db = new sqlite3.Database(dbPath);
 
 console.log('\n================ Local SQLite Database Query ================');

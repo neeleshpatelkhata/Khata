@@ -1,4 +1,4 @@
-const { supabaseClient, isSupabaseConfigured, supabaseUrl } = require('./backend/src/config/supabase');
+const { supabaseClient, isSupabaseConfigured, supabaseUrl } = require('./src/config/supabase');
 
 console.log('Testing Supabase Client connection...');
 console.log('Configured URL:', supabaseUrl);

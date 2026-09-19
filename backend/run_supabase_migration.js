@@ -3,7 +3,12 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const connectionString = process.env.SUPABASE_DB_URL || "postgresql://postgres:Devansh2004passw@db.hobqauofjovwdttvqmpt.supabase.co:5432/postgres";
+const connectionString = process.env.SUPABASE_DB_URL;
+
+if (!connectionString) {
+  console.error('SUPABASE_DB_URL is not set in backend/.env — nothing to migrate.');
+  process.exit(1);
+}
 
 console.log('🔌 Connecting to Supabase PostgreSQL database at:');
 console.log(connectionString.replace(/(:[^:@]+@)/, ':****@'));

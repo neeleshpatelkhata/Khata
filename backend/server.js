@@ -1,11 +1,9 @@
 require('dotenv').config();
 const express = require('express');
-const path = require('path');
 const cors = require('cors');
-const fs = require('fs');
-const { initSchema, migrateSchema } = require('./backend/src/database/db');
-const apiRoutes = require('./backend/src/routes/api');
-const { errorHandler } = require('./backend/src/middleware/errorHandler');
+const { initSchema, migrateSchema } = require('./src/database/db');
+const apiRoutes = require('./src/routes/api');
+const { errorHandler } = require('./src/middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -19,31 +17,20 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 // Serve API routes
 app.use('/api/v1', apiRoutes);
 
-// Serve static frontend assets from dist folder if built
-const distPath = path.join(__dirname, 'dist');
-
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath, { etag: false, maxAge: 0 }));
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.sendFile(path.join(distPath, 'index.html'));
-    }
-  });
-} else {
-  app.get('/', (req, res) => {
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head><title>Khata Server Running</title></head>
-        <body style="background:#090B10; color:#06B6D4; font-family:sans-serif; text-align:center; padding:5rem;">
-          <h1>Khata Ledger API Server Running on Port ${PORT}</h1>
-          <p style="color:#FFF">Please run <code>npm run build</code> to generate frontend static bundle.</p>
-        </body>
-      </html>
-    `);
-  });
-}
+// This service is API-only now — the frontend is a separately hosted static
+// site (see frontend/), not built/served from here.
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head><title>Khata API</title></head>
+      <body style="background:#090B10; color:#06B6D4; font-family:sans-serif; text-align:center; padding:5rem;">
+        <h1>Khata Ledger API Server Running on Port ${PORT}</h1>
+        <p style="color:#FFF">This is the API only. The frontend is hosted separately.</p>
+      </body>
+    </html>
+  `);
+});
 
 // Error handling
 app.use(errorHandler);
@@ -57,7 +44,7 @@ initSchema().then(async () => {
 
   if (!skipSeed) {
     // Seed default admin user & demo data if empty on local SQLite only
-    const { run, get } = require('./backend/src/database/db');
+    const { run, get } = require('./src/database/db');
     const bcrypt = require('bcryptjs');
     const { v4: uuidv4 } = require('uuid');
 

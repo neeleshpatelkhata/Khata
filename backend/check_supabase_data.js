@@ -2,7 +2,7 @@ const { Client } = require('pg');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const connectionString = process.env.SUPABASE_DB_URL || "postgresql://postgres:Devansh2004passw@db.hobqauofjovwdttvqmpt.supabase.co:5432/postgres";
+const connectionString = process.env.SUPABASE_DB_URL;
 
 const client = new Client({
   connectionString: connectionString,
@@ -10,6 +10,10 @@ const client = new Client({
 });
 
 async function inspectData() {
+  if (!connectionString) {
+    console.error('SUPABASE_DB_URL is not set in backend/.env — nothing to inspect.');
+    return;
+  }
   try {
     await client.connect();
     console.log('📊 Connecting to Supabase database...');

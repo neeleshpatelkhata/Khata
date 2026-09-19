@@ -1,6 +1,6 @@
 -- =============================================================================
 -- KHATA LEDGER ENTERPRISE - SUPABASE POSTGRESQL DATABASE SCHEMA
--- Target Database: postgresql://postgres:Devansh2004passw@db.hobqauofjovwdttvqmpt.supabase.co:5432/postgres
+-- Target Database: set via SUPABASE_DB_URL in backend/.env (never hardcode credentials here)
 -- =============================================================================
 
 -- Enable UUID Extension if not already enabled

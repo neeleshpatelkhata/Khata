@@ -1,10 +1,11 @@
 const { Client } = require('pg');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 async function wipeAll() {
   console.log('--- Wiping Local SQLite Database ---');
-  const dbPath = path.join(__dirname, 'backend/khata_ledger.db');
+  const dbPath = path.join(__dirname, 'khata_ledger.db');
   const db = new sqlite3.Database(dbPath);
 
   await new Promise((resolve, reject) => {
@@ -28,9 +29,14 @@ async function wipeAll() {
   });
   db.close();
 
+  if (!process.env.SUPABASE_DB_URL) {
+    console.log('SUPABASE_DB_URL not set — skipping remote wipe.');
+    return;
+  }
+
   console.log('--- Wiping Remote Supabase PostgreSQL Database ---');
   const client = new Client({
-    connectionString: 'postgresql://postgres:Devansh2004passw@db.hobqauofjovwdttvqmpt.supabase.co:5432/postgres'
+    connectionString: process.env.SUPABASE_DB_URL
   });
 
   try {
