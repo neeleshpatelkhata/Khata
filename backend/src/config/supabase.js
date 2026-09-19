@@ -21,7 +21,9 @@ let supabaseClient = null;
 
 if (isSupabaseConfigured) {
   try {
-    supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    // Service-role key, not anon: this client only ever runs server-side and
+    // needs to bypass RLS (the anon key is for browser/client contexts).
+    supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
     console.log(`[Supabase] Successfully initialized Supabase Client for: ${supabaseUrl}`);
   } catch (err) {
     console.error(`[Supabase] Failed to initialize client: ${err.message}`);

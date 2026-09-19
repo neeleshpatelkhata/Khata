@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { apiClient } from '../services/apiClient';
 import {
   computePartiesWithBalances,
@@ -187,6 +190,39 @@ function dedupeParties(partiesList = []) {
 
 function localId(prefix) {
   return `${prefix}_local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Save a text file for the user. A browser can trigger a real download from
+ * a blob: URL; the Android WebView cannot (there's no download manager
+ * wired up for blob: URLs there), so on-device this writes to the app's
+ * cache dir and hands it to the native share sheet instead.
+ */
+async function saveOrShareTextFile(filename, content, mimeType) {
+  if (Capacitor.isNativePlatform()) {
+    const { uri } = await Filesystem.writeFile({
+      path: filename,
+      data: content,
+      directory: Directory.Cache,
+      encoding: Encoding.UTF8
+    });
+    await Share.share({
+      title: filename,
+      url: uri,
+      dialogTitle: 'Save or share your Khata file'
+    });
+    return;
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function auditEntry(action, user, details) {
@@ -721,17 +757,10 @@ export function useLedgerStore() {
     }
   };
 
-  const exportLocalBackup = (workspaceId) => {
+  const exportLocalBackup = async (workspaceId) => {
     const snapshot = buildSnapshot(workspaceId);
-    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `khata-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `khata-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    await saveOrShareTextFile(filename, JSON.stringify(snapshot, null, 2), 'application/json');
     return snapshot;
   };
 
@@ -776,7 +805,7 @@ export function useLedgerStore() {
   };
 
   /** Statement export for sharing with a party (CSV opens in any spreadsheet). */
-  const exportTransactionsCsv = (rows = getFilteredTransactions()) => {
+  const exportTransactionsCsv = async (rows = getFilteredTransactions()) => {
     const partyName = new Map(state.parties.map((p) => [String(p.id), p.name]));
     const header = ['Date', 'Party', 'Type', 'Amount', 'Base', 'GST', 'Payment Mode', 'Category', 'Notes'];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -800,15 +829,8 @@ export function useLedgerStore() {
       )
     ];
 
-    const blob = new Blob([`﻿${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `khata-statement-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `khata-statement-${new Date().toISOString().slice(0, 10)}.csv`;
+    await saveOrShareTextFile(filename, `﻿${lines.join('\r\n')}`, 'text/csv;charset=utf-8');
   };
 
   // --- UI state -----------------------------------------------------------

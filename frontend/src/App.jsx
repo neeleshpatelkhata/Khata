@@ -2,7 +2,6 @@ import React, { useState, useEffect, Component } from 'react';
 import { useAuthStore } from './store/authStore.js';
 import { useLedgerStore } from './store/ledgerStore.js';
 import AuthScreen from './components/AuthScreen.jsx';
-import Navbar from './components/Navbar.jsx';
 import ExecutiveDashboard from './components/ExecutiveDashboard.jsx';
 import PartyLedgerView from './components/PartyLedgerView.jsx';
 import AllTransactionsView from './components/AllTransactionsView.jsx';
@@ -190,27 +189,11 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', paddingBottom: '90px' }}>
-        {/*
-          The brand/workspace-switcher/search/profile header is intentionally
-          hidden on the Dashboard tab (see ExecutiveDashboard) — it stays
-          exactly as-is on every other tab, so switching workspace, search
-          and sign-out remain one tap away (Parties/Transactions/Backup/
-          Profile) rather than being removed from the app.
-        */}
-        {activeTab !== 'dashboard' && (
-          <Navbar
-            onOpenSearch={() => setIsSearchOpen(true)}
-            onOpenProfile={() => setIsProfileOpen(true)}
-          />
-        )}
-
         <main style={{ flex: 1 }}>
           {activeTab === 'dashboard' && (
             <ExecutiveDashboard
               onOpenSmartEntry={() => setIsSmartEntryOpen(true)}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onOpenSearch={() => setIsSearchOpen(true)}
-              onOpenProfile={() => setIsProfileOpen(true)}
             />
           )}
           {activeTab === 'parties' && <PartyLedgerView />}

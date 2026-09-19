@@ -83,11 +83,11 @@ export default function BackupTelemetryCenter() {
     }
   };
 
-  const handleExportLocal = () => {
+  const handleExportLocal = async () => {
     if (!currentWorkspace?.id) return;
     try {
-      exportLocalBackup(currentWorkspace.id);
-      setMessage({ type: 'success', text: '💾 Backup file generated and downloaded.' });
+      await exportLocalBackup(currentWorkspace.id);
+      setMessage({ type: 'success', text: '💾 Backup file ready — saved or shared.' });
     } catch (err) {
       setMessage({ type: 'error', text: `Export failed: ${err.message}` });
     }
@@ -120,7 +120,7 @@ export default function BackupTelemetryCenter() {
   const payloadSizeKb = ((JSON.stringify({ parties, transactions }).length) / 1024).toFixed(2);
 
   return (
-    <div style={{ padding: '0 1rem 2rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }} data-testid="tool_backup_settings">
+    <div style={{ padding: '1.1rem 1rem 2rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }} data-testid="tool_backup_settings">
       
       {/* Page Header */}
       <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>

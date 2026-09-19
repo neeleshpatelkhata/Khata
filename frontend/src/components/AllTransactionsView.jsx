@@ -67,7 +67,7 @@ export default function AllTransactionsView() {
   });
 
   return (
-    <div style={{ padding: '0 1rem 7rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ padding: '1.1rem 1rem 7rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       
       {/* Header & Controls */}
       <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>

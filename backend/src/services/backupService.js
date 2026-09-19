@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { run, get, all, dbPath, backupsDir } = require('../database/db');
+const { supabaseClient, isSupabaseConfigured } = require('../config/supabase');
 
 function getChecksum(filePath) {
   const content = fs.readFileSync(filePath);
@@ -110,6 +111,21 @@ async function createUserSnapshotBackup(workspaceId, userId, { backupName, type 
     `INSERT INTO user_backups (id, user_id, workspace_id, backup_name, type, data_json) VALUES (?, ?, ?, ?, ?, ?)`,
     [id, userId, workspaceId, name, type, payloadStr]
   );
+
+  // Mirror into Supabase so this backup survives even if the SQLite file
+  // itself is lost (e.g. an ephemeral host disk wipe on redeploy). Best
+  // effort only — a Supabase hiccup must never fail the backup the user is
+  // waiting on, since the local copy above already succeeded.
+  if (isSupabaseConfigured && supabaseClient) {
+    try {
+      const { error } = await supabaseClient
+        .from('user_backups')
+        .insert({ id, user_id: userId, workspace_id: workspaceId, backup_name: name, type, data_json: payloadStr });
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Supabase backup mirror failed (local backup still saved):', err.message);
+    }
+  }
 
   return await get('SELECT id, user_id, workspace_id, backup_name, type, created_at FROM user_backups WHERE id = ?', [id]);
 }
