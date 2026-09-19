@@ -60,6 +60,8 @@ function initSchema() {
           opening_balance REAL DEFAULT 0,
           current_balance REAL DEFAULT 0,
           version INTEGER DEFAULT 1,
+          is_deleted INTEGER DEFAULT 0,
+          deleted_at DATETIME,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
@@ -72,16 +74,22 @@ function initSchema() {
           id TEXT PRIMARY KEY,
           workspace_id TEXT NOT NULL,
           party_id TEXT NOT NULL,
-          type TEXT NOT NULL, -- 'GAVE' (Debit / Receivable) or 'GOT' (Credit / Payable)
+          -- 'GAVE': party owes you more (receivable). 'GOT': party owes you less.
+          type TEXT NOT NULL,
           amount REAL NOT NULL,
+          base_amount REAL DEFAULT 0,
+          gst_amount REAL DEFAULT 0,
           payment_mode TEXT DEFAULT 'CASH',
           category TEXT DEFAULT 'GENERAL',
           notes TEXT,
           date DATETIME NOT NULL,
           version INTEGER DEFAULT 1,
           sync_status TEXT DEFAULT 'SYNCHRONIZED',
+          is_deleted INTEGER DEFAULT 0,
+          deleted_at DATETIME,
           created_by TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
           FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE
         )
@@ -127,12 +135,72 @@ function initSchema() {
           checksum TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
+      `);
+
+      // User Snapshots Backups Table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS user_backups (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          backup_name TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'MANUAL',
+          data_json TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
       `, (err) => {
         if (err) reject(err);
         else resolve();
       });
     });
   });
+}
+
+/**
+ * Bring an existing database up to the current schema.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is a no-op once a table exists, so columns added
+ * after the first release have to be applied with ALTER TABLE. SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, so a duplicate-column error means the migration
+ * already ran and is safely ignored.
+ */
+async function migrateSchema() {
+  const columnAdditions = [
+    ['parties', 'is_deleted', 'INTEGER DEFAULT 0'],
+    ['parties', 'deleted_at', 'DATETIME'],
+    ['transactions', 'base_amount', 'REAL DEFAULT 0'],
+    ['transactions', 'gst_amount', 'REAL DEFAULT 0'],
+    ['transactions', 'is_deleted', 'INTEGER DEFAULT 0'],
+    ['transactions', 'deleted_at', 'DATETIME'],
+    ['transactions', 'updated_at', 'DATETIME']
+  ];
+
+  for (const [table, column, definition] of columnAdditions) {
+    try {
+      await run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      console.log(`Migration applied: ${table}.${column}`);
+    } catch (err) {
+      if (!/duplicate column name/i.test(err.message)) {
+        console.error(`Migration failed for ${table}.${column}:`, err.message);
+      }
+    }
+  }
+
+  // Indexes that matter once a workspace has a few thousand entries.
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_tx_workspace_date ON transactions(workspace_id, date DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_tx_party ON transactions(party_id)',
+    'CREATE INDEX IF NOT EXISTS idx_parties_workspace ON parties(workspace_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)'
+  ];
+
+  for (const sql of indexes) {
+    try {
+      await run(sql);
+    } catch (err) {
+      console.error('Index creation failed:', err.message);
+    }
+  }
 }
 
 // Database helper promises
@@ -166,6 +234,7 @@ function all(sql, params = []) {
 module.exports = {
   db,
   initSchema,
+  migrateSchema,
   run,
   get,
   all,

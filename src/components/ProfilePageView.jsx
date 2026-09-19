@@ -19,11 +19,13 @@ import {
   Moon,
   Sun,
   Globe,
-  Sliders
+  Sliders,
+  ShieldAlert,
+  Lock
 } from 'lucide-react';
 
 export default function ProfilePageView({ onBack }) {
-  const { user, currentWorkspace, updateProfile, logout } = useAuthStore();
+  const { user, currentWorkspace, updateProfile, setRole, logout } = useAuthStore();
   const { setActiveTab } = useLedgerStore();
   const { theme, lang, setTheme, setLang, t } = usePreferencesStore();
 
@@ -31,7 +33,7 @@ export default function ProfilePageView({ onBack }) {
     name: '',
     email: '',
     phone: '',
-    role: '',
+    role: 'OWNER',
     avatarUrl: ''
   });
 
@@ -40,10 +42,10 @@ export default function ProfilePageView({ onBack }) {
   useEffect(() => {
     if (user) {
       setFormData({
-        name: user.name || 'Apex Admin Executive',
-        email: user.email || 'demo@khata.pro',
+        name: user.name || 'Apex Lead Accountant',
+        email: user.email || 'owner@khata.pro',
         phone: user.phone || '+91 9876543210',
-        role: user.role || 'Enterprise Administrator',
+        role: user.role || 'OWNER',
         avatarUrl: user.avatarUrl || ''
       });
     }
@@ -58,6 +60,11 @@ export default function ProfilePageView({ onBack }) {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleRoleToggle = (selectedRole) => {
+    setFormData(prev => ({ ...prev, role: selectedRole }));
+    setRole(selectedRole);
   };
 
   const handleSave = (e) => {
@@ -83,7 +90,15 @@ export default function ProfilePageView({ onBack }) {
       {/* Top Header Navigation Bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
         <button
-          onClick={onBack || (() => setActiveTab('dashboard'))}
+          onClick={() => {
+            if (window.history.length > 1) {
+              window.history.back();
+            } else if (onBack) {
+              onBack();
+            } else {
+              setActiveTab('dashboard');
+            }
+          }}
           className="btn-secondary"
           style={{
             display: 'flex',
@@ -116,7 +131,7 @@ export default function ProfilePageView({ onBack }) {
         borderColor: 'rgba(99, 102, 241, 0.25)',
         boxShadow: '0 12px 32px rgba(0, 0, 0, 0.3)'
       }}>
-        {/* Profile Picture Upload Badge Container */}
+        {/* Profile Picture Container */}
         <div style={{ position: 'relative', marginBottom: '1rem' }}>
           {formData.avatarUrl ? (
             <img 
@@ -136,21 +151,20 @@ export default function ProfilePageView({ onBack }) {
               width: '96px',
               height: '96px',
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #FF6B6B, #EE5253)',
+              background: formData.role === 'OWNER' ? 'linear-gradient(135deg, #4F46E5, #7C3AED)' : 'linear-gradient(135deg, #F59E0B, #FBBF24)',
               color: '#FFFFFF',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '2.5rem',
               fontWeight: '900',
-              boxShadow: '0 8px 24px rgba(238, 82, 83, 0.45)',
+              boxShadow: '0 8px 24px rgba(79, 70, 229, 0.45)',
               border: '3px solid rgba(255, 255, 255, 0.2)'
             }}>
               {formData.name ? formData.name.charAt(0).toUpperCase() : 'A'}
             </div>
           )}
 
-          {/* Camera Upload Trigger */}
           <label 
             htmlFor="profile-pic-input"
             style={{
@@ -183,15 +197,18 @@ export default function ProfilePageView({ onBack }) {
           />
         </div>
 
-        <h2 style={{ fontSize: '1.4rem', fontWeight: '900', letterSpacing: '-0.5px', marginBottom: '0.25rem' }}>
-          {formData.name || 'Apex Admin Executive'}
+        <h2 style={{ fontSize: '1.4rem', fontWeight: '900', letterSpacing: '-0.5px', marginBottom: '0.25rem', color: 'var(--text-main)' }}>
+          {formData.name || 'Apex Lead Accountant'}
         </h2>
-        <div style={{ fontSize: '0.85rem', color: 'var(--color-purple-80)', fontWeight: '700', marginBottom: '0.75rem' }}>
-          {formData.role || 'Enterprise Administrator'}
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
+          <span className={`badge ${formData.role === 'OWNER' ? 'badge-purple' : 'badge-amber'}`} style={{ fontSize: '0.8rem', padding: '0.3rem 0.85rem' }}>
+            {formData.role === 'OWNER' ? '👑 Workspace Owner (Full Access)' : '👤 Staff Accountant (Restricted Writes)'}
+          </span>
         </div>
 
         <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
-          <CheckCircle2 size={12} /> Active Account Verified
+          <CheckCircle2 size={12} /> Active Workspace Locked to INR (₹)
         </span>
       </div>
 
@@ -213,13 +230,77 @@ export default function ProfilePageView({ onBack }) {
         </div>
       )}
 
-      {/* NEW: PREFERENCES & SETTINGS SECTION (Theme & Language Toggles) */}
+      {/* ROLE SWITCHER SECTION */}
       <div className="glass-card" style={{ padding: '1.5rem', borderRadius: '20px' }}>
         <div style={{
           fontSize: '0.8rem',
           fontWeight: '800',
           textTransform: 'uppercase',
-          color: 'var(--color-deep-purple)',
+          color: 'var(--color-cyan)',
+          marginBottom: '0.75rem',
+          letterSpacing: '0.05em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem'
+        }}>
+          <ShieldAlert size={16} /> User Role & Permissions (RBAC)
+        </div>
+
+        <p style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          Select user access tier. <strong>Owner</strong> has full edit/delete privileges. <strong>Staff</strong> can add transactions & scan bills, but cannot delete records or edit entries older than 24 hours.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <button
+            type="button"
+            onClick={() => handleRoleToggle('OWNER')}
+            className={formData.role === 'OWNER' ? 'btn-primary' : 'btn-secondary'}
+            style={{
+              flexDirection: 'column',
+              padding: '1rem',
+              borderRadius: '16px',
+              alignItems: 'flex-start',
+              gap: '0.35rem'
+            }}
+          >
+            <div style={{ fontWeight: '900', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              👑 Owner
+            </div>
+            <div style={{ fontSize: '0.7rem', opacity: 0.8, textAlign: 'left' }}>
+              Full Control • Edit & Delete Any Record
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleRoleToggle('STAFF')}
+            className={formData.role === 'STAFF' ? 'btn-primary' : 'btn-secondary'}
+            style={{
+              flexDirection: 'column',
+              padding: '1rem',
+              borderRadius: '16px',
+              alignItems: 'flex-start',
+              gap: '0.35rem',
+              background: formData.role === 'STAFF' ? 'linear-gradient(135deg, #F59E0B, #D97706)' : undefined
+            }}
+          >
+            <div style={{ fontWeight: '900', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              👤 Staff
+            </div>
+            <div style={{ fontSize: '0.7rem', opacity: 0.8, textAlign: 'left' }}>
+              Restricted • No Delete • 24h Edit Limit
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* PREFERENCES & SETTINGS SECTION */}
+      <div className="glass-card" style={{ padding: '1.5rem', borderRadius: '20px' }}>
+        <div style={{
+          fontSize: '0.8rem',
+          fontWeight: '800',
+          textTransform: 'uppercase',
+          color: 'var(--color-purple)',
           marginBottom: '1.1rem',
           letterSpacing: '0.05em',
           display: 'flex',
@@ -250,7 +331,6 @@ export default function ProfilePageView({ onBack }) {
               </div>
             </div>
 
-            {/* iOS Style Segmented Pill Switch for Theme */}
             <div style={{
               display: 'flex',
               background: 'var(--bg-canvas)',
@@ -271,8 +351,7 @@ export default function ProfilePageView({ onBack }) {
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  transition: 'all 0.15s ease'
+                  gap: '0.35rem'
                 }}
               >
                 <Moon size={13} /> {t('darkMode')}
@@ -290,8 +369,7 @@ export default function ProfilePageView({ onBack }) {
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  transition: 'all 0.15s ease'
+                  gap: '0.35rem'
                 }}
               >
                 <Sun size={13} /> {t('lightMode')}
@@ -319,7 +397,6 @@ export default function ProfilePageView({ onBack }) {
               </div>
             </div>
 
-            {/* iOS Style Segmented Pill Switch for Language */}
             <div style={{
               display: 'flex',
               background: 'var(--bg-canvas)',
@@ -337,11 +414,10 @@ export default function ProfilePageView({ onBack }) {
                   borderRadius: '9px',
                   fontSize: '0.775rem',
                   fontWeight: '800',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
+                  cursor: 'pointer'
                 }}
               >
-                🇬🇧 {t('englishLang')}
+                🇬🇧 English
               </button>
               <button
                 onClick={() => setLang('HI')}
@@ -353,11 +429,10 @@ export default function ProfilePageView({ onBack }) {
                   borderRadius: '9px',
                   fontSize: '0.775rem',
                   fontWeight: '800',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
+                  cursor: 'pointer'
                 }}
               >
-                🇮🇳 {t('hindiLang')}
+                🇮🇳 हिंदी
               </button>
             </div>
           </div>
@@ -370,18 +445,17 @@ export default function ProfilePageView({ onBack }) {
           fontSize: '0.8rem',
           fontWeight: '800',
           textTransform: 'uppercase',
-          color: 'var(--color-deep-purple)',
+          color: 'var(--color-purple)',
           marginBottom: '1.1rem',
           letterSpacing: '0.05em'
         }}>
-          {t('editableDetails')}
+          Profile Information
         </div>
 
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-          {/* Full Name */}
           <div>
             <label style={{ fontSize: '0.775rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>
-              {t('fullName')}
+              Full Name
             </label>
             <div style={{ position: 'relative' }}>
               <input
@@ -397,10 +471,9 @@ export default function ProfilePageView({ onBack }) {
             </div>
           </div>
 
-          {/* Email Address */}
           <div>
             <label style={{ fontSize: '0.775rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>
-              {t('emailAddress')}
+              Email Address
             </label>
             <div style={{ position: 'relative' }}>
               <input
@@ -416,10 +489,9 @@ export default function ProfilePageView({ onBack }) {
             </div>
           </div>
 
-          {/* Phone Number */}
           <div>
             <label style={{ fontSize: '0.775rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>
-              {t('phoneNumber')}
+              Phone Number
             </label>
             <div style={{ position: 'relative' }}>
               <input
@@ -434,25 +506,6 @@ export default function ProfilePageView({ onBack }) {
             </div>
           </div>
 
-          {/* Role / Designation */}
-          <div>
-            <label style={{ fontSize: '0.775rem', fontWeight: '700', color: 'var(--text-muted)', display: 'block', marginBottom: '0.4rem' }}>
-              {t('roleDesignation')}
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                value={formData.role}
-                onChange={e => setFormData({ ...formData, role: e.target.value })}
-                className="input-field"
-                placeholder="Enterprise Administrator"
-                style={{ paddingLeft: '2.5rem' }}
-              />
-              <Briefcase size={18} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-            </div>
-          </div>
-
-          {/* Save Changes Button */}
           <button
             type="submit"
             className="btn-primary"
@@ -462,87 +515,12 @@ export default function ProfilePageView({ onBack }) {
               padding: '0.85rem',
               fontSize: '0.95rem',
               fontWeight: '800',
-              borderRadius: '14px',
-              background: 'linear-gradient(135deg, #4F46E5, #818CF8)',
-              boxShadow: '0 4px 16px rgba(79, 70, 229, 0.4)'
+              borderRadius: '14px'
             }}
           >
-            <Save size={18} /> {t('saveChanges')}
+            <Save size={18} /> Save Profile Changes
           </button>
         </form>
-      </div>
-
-      {/* Account Details Section */}
-      <div className="glass-card" style={{ padding: '1.5rem', borderRadius: '20px' }}>
-        <div style={{
-          fontSize: '0.8rem',
-          fontWeight: '800',
-          textTransform: 'uppercase',
-          color: 'var(--color-deep-purple)',
-          marginBottom: '1.1rem',
-          letterSpacing: '0.05em'
-        }}>
-          {t('accountMetadata')}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.75rem 1rem',
-            background: 'rgba(255,255,255,0.03)',
-            borderRadius: '14px',
-            border: '1px solid var(--border-subtle)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <Building2 size={18} color="var(--color-purple-40)" />
-              <div>
-                <div style={{ fontSize: '0.825rem', fontWeight: '700' }}>Linked Workspace Ledger</div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>{currentWorkspace?.name || 'Dev\'s Primary Ledger'}</div>
-              </div>
-            </div>
-            <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>Primary</span>
-          </div>
-
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.75rem 1rem',
-            background: 'rgba(255,255,255,0.03)',
-            borderRadius: '14px',
-            border: '1px solid var(--border-subtle)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <Calendar size={18} color="var(--color-purple-40)" />
-              <div>
-                <div style={{ fontSize: '0.825rem', fontWeight: '700' }}>Account Creation Date</div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>September 11, 2026</div>
-              </div>
-            </div>
-            <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>ID: USR-8942</span>
-          </div>
-
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.75rem 1rem',
-            background: 'rgba(255,255,255,0.03)',
-            borderRadius: '14px',
-            border: '1px solid var(--border-subtle)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <Clock size={18} color="var(--color-emerald)" />
-              <div>
-                <div style={{ fontSize: '0.825rem', fontWeight: '700' }}>Last Login Active Session</div>
-                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Today at 11:22 PM (Verified IP)</div>
-              </div>
-            </div>
-            <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>Active</span>
-          </div>
-        </div>
       </div>
 
       {/* Logout Action Button */}
@@ -557,11 +535,10 @@ export default function ProfilePageView({ onBack }) {
           borderRadius: '14px',
           color: 'var(--color-rose)',
           borderColor: 'rgba(244, 63, 94, 0.3)',
-          background: 'rgba(244, 63, 94, 0.05)',
-          marginTop: '0.25rem'
+          background: 'rgba(244, 63, 94, 0.05)'
         }}
       >
-        <LogOut size={18} /> {t('signOut')}
+        <LogOut size={18} /> Sign Out of Account
       </button>
 
     </div>

@@ -3,7 +3,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
-const { initSchema } = require('./backend/src/database/db');
+const { initSchema, migrateSchema } = require('./backend/src/database/db');
 const apiRoutes = require('./backend/src/routes/api');
 const { errorHandler } = require('./backend/src/middleware/errorHandler');
 
@@ -11,8 +11,10 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Receipt photos and voice-note recordings are sent as base64 JSON bodies —
+// the 100kb default is too small for either, so it's raised here.
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Serve API routes
 app.use('/api/v1', apiRoutes);
@@ -48,6 +50,7 @@ app.use(errorHandler);
 
 // Initialize DB and start server
 initSchema().then(async () => {
+  await migrateSchema();
   console.log('Database schema migration completed successfully.');
 
   const skipSeed = process.env.SKIP_SEED === 'true' || process.env.DB_PROVIDER === 'supabase';
@@ -78,9 +81,25 @@ initSchema().then(async () => {
     console.log('Clean database mode active (SKIP_SEED=true). No mock data generated.');
   }
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Khata Ledger Enterprise Full-Stack Server running at http://localhost:${PORT}`);
-  });
+  const startServer = (portToTry) => {
+    const server = app.listen(portToTry, () => {
+      console.log(`\n=================================================================`);
+      console.log(`🚀 Khata Ledger Enterprise Full-Stack Server is LIVE!`);
+      console.log(`👉 Access on Laptop: http://localhost:${portToTry}`);
+      console.log(`=================================================================\n`);
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`⚠️ Port ${portToTry} is occupied, trying port ${portToTry + 1}...`);
+        startServer(portToTry + 1);
+      } else {
+        console.error('Server error:', err);
+      }
+    });
+  };
+
+  startServer(Number(PORT));
 }).catch(err => {
   console.error('Failed to initialize database schema:', err);
 });

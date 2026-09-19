@@ -2,22 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useLedgerStore } from '../store/ledgerStore';
 import { useSyncStore } from '../store/syncStore';
-import { 
-  Building2, 
-  Search, 
-  Wifi, 
-  WifiOff, 
-  RefreshCw, 
-  User, 
-  UserCheck, 
-  Settings, 
-  LogOut,
-  ChevronDown,
-  Sparkles
+import {
+  Search,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Settings,
+  LogOut
 } from 'lucide-react';
 
 export default function Navbar({ onOpenSearch, onOpenProfile }) {
-  const { user, currentWorkspace, workspaces, switchWorkspace, logout, updateProfile } = useAuthStore();
+  const { user, currentWorkspace, workspaces, switchWorkspace, logout } = useAuthStore();
   const { fetchWorkspaceData } = useLedgerStore();
   const { isOnline, pendingOutboxCount, isSyncing, triggerManualSync } = useSyncStore();
 
@@ -34,19 +29,6 @@ export default function Navbar({ onOpenSearch, onOpenProfile }) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const profileOptions = [
-    { id: 'profile_d', name: user?.name || 'Devansh Lead Accountant', role: 'Primary Lead Accountant', avatar: 'D', bg: 'linear-gradient(135deg, #4F46E5, #818CF8)' },
-    { id: 'profile_a', name: 'Apex Admin Executive', role: 'Enterprise Administrator', avatar: 'A', bg: 'linear-gradient(135deg, #FF6B6B, #EE5253)' }
-  ];
-
-  const handleSelectProfile = (profile) => {
-    updateProfile({
-      name: profile.name,
-      role: profile.role
-    });
-    setIsDropdownOpen(false);
-  };
 
   return (
     <header className="glass-panel" style={{
@@ -229,56 +211,6 @@ export default function Navbar({ onOpenSearch, onOpenProfile }) {
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {user?.email || 'demo@khata.pro'}
                 </div>
-              </div>
-            </div>
-
-            {/* Profile Options / Account Switcher */}
-            <div>
-              <div style={{ fontSize: '0.7rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-                Select Profile Option
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                {profileOptions.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleSelectProfile(p)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.65rem',
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: '12px',
-                      background: user?.name === p.name ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.03)',
-                      border: user?.name === p.name ? '1px solid var(--color-purple)' : '1px solid transparent',
-                      color: 'var(--text-main)',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      width: '100%',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '50%',
-                      background: p.bg,
-                      color: '#FFF',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.75rem',
-                      fontWeight: '800'
-                    }}>
-                      {p.avatar}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: '700' }}>{p.name}</div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{p.role}</div>
-                    </div>
-                    {user?.name === p.name && <UserCheck size={16} color="var(--color-emerald)" />}
-                  </button>
-                ))}
               </div>
             </div>
 

@@ -5,8 +5,13 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "build": "vite build"
+    "dev": "vite",
+    "serve": "node server.js",
+    "build": "vite build",
+    "test": "node scripts/verify-ledger-engine.mjs",
+    "test:api": "node scripts/verify-backend.mjs",
+    "android:sync": "vite build && cap sync android",
+    "android:release": "powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",

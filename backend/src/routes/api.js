@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const path = require('path');
 const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -7,6 +7,12 @@ const ledgerService = require('../services/ledgerService');
 const syncEngine = require('../services/syncEngine');
 const storageService = require('../services/storageService');
 const backupService = require('../services/backupService');
+const aiService = require('../services/aiService');
+
+// Roles allowed to write ledger data. OWNER is the role the mobile app issues,
+// so leaving it out of this list locked every app user out of their own books.
+const WRITE_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
+const ADMIN_ROLES = ['OWNER', 'ADMIN'];
 
 // --- Auth Routes ---
 router.post('/auth/register', async (req, res, next) => {
@@ -55,6 +61,15 @@ router.get('/auth/me', authenticateToken, async (req, res) => {
   res.json({ success: true, data: { user: req.user } });
 });
 
+router.put('/auth/me', authenticateToken, async (req, res, next) => {
+  try {
+    const updated = await authService.updateProfile(req.user.id, req.body);
+    res.json({ success: true, data: { user: updated } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // --- Workspaces ---
 router.get('/workspaces', authenticateToken, async (req, res, next) => {
   try {
@@ -93,7 +108,7 @@ router.get('/workspaces/:wsId/parties', authenticateToken, async (req, res, next
   }
 });
 
-router.post('/workspaces/:wsId/parties', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.post('/workspaces/:wsId/parties', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
     const { name, phone, email, type, address, openingBalance } = req.body;
@@ -120,7 +135,7 @@ router.get('/workspaces/:wsId/parties/:id', authenticateToken, async (req, res, 
   }
 });
 
-router.put('/workspaces/:wsId/parties/:id', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.put('/workspaces/:wsId/parties/:id', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
     const updated = await ledgerService.updateParty(req.params.wsId, req.params.id, req.body);
@@ -130,7 +145,7 @@ router.put('/workspaces/:wsId/parties/:id', authenticateToken, requireRole(['ADM
   }
 });
 
-router.delete('/workspaces/:wsId/parties/:id', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.delete('/workspaces/:wsId/parties/:id', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
     const resData = await ledgerService.deleteParty(req.params.wsId, req.params.id);
@@ -152,10 +167,10 @@ router.get('/workspaces/:wsId/transactions', authenticateToken, async (req, res,
   }
 });
 
-router.post('/workspaces/:wsId/transactions', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.post('/workspaces/:wsId/transactions', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
-    const { partyId, type, amount, paymentMode, category, notes, date } = req.body;
+    const { partyId, type, amount, baseAmount, gstAmount, paymentMode, category, notes, date } = req.body;
     if (!partyId || !type || !amount) {
       return res.status(400).json({
         success: false,
@@ -163,7 +178,7 @@ router.post('/workspaces/:wsId/transactions', authenticateToken, requireRole(['A
       });
     }
     const result = await ledgerService.addTransaction(req.params.wsId, req.user.id, {
-      partyId, type, amount, paymentMode, category, notes, date
+      partyId, type, amount, baseAmount, gstAmount, paymentMode, category, notes, date
     });
     res.status(201).json({ success: true, data: result.transaction, updatedPartyBalance: result.updatedPartyBalance });
   } catch (err) {
@@ -171,7 +186,7 @@ router.post('/workspaces/:wsId/transactions', authenticateToken, requireRole(['A
   }
 });
 
-router.put('/workspaces/:wsId/transactions/:id', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.put('/workspaces/:wsId/transactions/:id', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
     const result = await ledgerService.updateTransaction(req.params.wsId, req.params.id, req.body);
@@ -181,11 +196,84 @@ router.put('/workspaces/:wsId/transactions/:id', authenticateToken, requireRole(
   }
 });
 
-router.delete('/workspaces/:wsId/transactions/:id', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.delete('/workspaces/:wsId/transactions/:id', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
     const result = await ledgerService.deleteTransaction(req.params.wsId, req.params.id);
     res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/workspaces/:wsId/transactions/:id/restore', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
+  try {
+    await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
+    const result = await ledgerService.restoreTransaction(req.params.wsId, req.params.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/workspaces/:wsId/parties/:id/restore', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
+  try {
+    await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
+    const result = await ledgerService.restoreParty(req.params.wsId, req.params.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- AI Assist (Gemini) ---
+// The API key lives only in this process's environment — never sent to the
+// client — so requests to Gemini are proxied through here.
+router.post('/ai/parse-invoice', authenticateToken, async (req, res, next) => {
+  try {
+    const { imageBase64, mimeType } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'imageBase64 is required.' }
+      });
+    }
+    const parsed = await aiService.parseInvoiceImage(imageBase64, mimeType || 'image/jpeg');
+    res.json({ success: true, data: parsed, aiAvailable: aiService.isConfigured() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/ai/parse-text', authenticateToken, async (req, res, next) => {
+  try {
+    const { text, partyNames } = req.body;
+    if (!text || !String(text).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'text is required.' }
+      });
+    }
+    const parsed = await aiService.parseNaturalLanguagePrompt(text, Array.isArray(partyNames) ? partyNames : []);
+    res.json({ success: true, data: parsed, aiAvailable: aiService.isConfigured() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Voice-note transcription — the fallback path for platforms (the Android
+// WebView this app ships in) where the Web Speech API is unavailable.
+router.post('/ai/transcribe-audio', authenticateToken, async (req, res, next) => {
+  try {
+    const { audioBase64, mimeType, languageCode } = req.body;
+    if (!audioBase64) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'audioBase64 is required.' }
+      });
+    }
+    const transcript = await aiService.transcribeAudio(audioBase64, mimeType || 'audio/webm', languageCode || 'en-IN');
+    res.json({ success: true, data: { transcript }, aiAvailable: aiService.isConfigured() });
   } catch (err) {
     next(err);
   }
@@ -251,7 +339,7 @@ router.get('/attachments/:id/download', authenticateToken, async (req, res, next
 });
 
 // --- Backup & Recovery Telemetry ---
-router.get('/backups/telemetry', authenticateToken, requireRole(['ADMIN', 'ACCOUNTANT']), async (req, res, next) => {
+router.get('/backups/telemetry', authenticateToken, requireRole(WRITE_ROLES), async (req, res, next) => {
   try {
     const telemetry = await backupService.getBackupTelemetry();
     res.json({ success: true, data: telemetry });
@@ -260,7 +348,7 @@ router.get('/backups/telemetry', authenticateToken, requireRole(['ADMIN', 'ACCOU
   }
 });
 
-router.post('/backups/create', authenticateToken, requireRole(['ADMIN']), async (req, res, next) => {
+router.post('/backups/create', authenticateToken, requireRole(ADMIN_ROLES), async (req, res, next) => {
   try {
     const backup = await backupService.createBackup('MANUAL');
     res.status(201).json({ success: true, data: backup });
@@ -269,10 +357,32 @@ router.post('/backups/create', authenticateToken, requireRole(['ADMIN']), async 
   }
 });
 
-router.post('/backups/:id/restore', authenticateToken, requireRole(['ADMIN']), async (req, res, next) => {
+router.post('/backups/:id/restore', authenticateToken, requireRole(ADMIN_ROLES), async (req, res, next) => {
   try {
     const result = await backupService.restoreFromBackup(req.params.id);
     res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- User Snapshot Cloud & Local Backups ---
+router.post('/workspaces/:wsId/user-backups', authenticateToken, async (req, res, next) => {
+  try {
+    await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
+    const { backupName, type, dataJson } = req.body;
+    const backupRecord = await backupService.createUserSnapshotBackup(req.params.wsId, req.user.id, { backupName, type, dataJson });
+    res.status(201).json({ success: true, data: backupRecord });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/workspaces/:wsId/user-backups', authenticateToken, async (req, res, next) => {
+  try {
+    await ledgerService.verifyWorkspaceAccess(req.params.wsId, req.user.id);
+    const list = await backupService.getUserSnapshotBackups(req.params.wsId, req.user.id);
+    res.json({ success: true, data: list });
   } catch (err) {
     next(err);
   }

@@ -1,26 +1,92 @@
 apply plugin: 'com.android.application'
 
+// Release signing credentials live in android/keystore.properties, which is
+// git-ignored. Without it the release build falls back to the debug key so a
+// local build still works, but it will NOT be uploadable to Play.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+def hasReleaseSigning = false
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    hasReleaseSigning = file(keystoreProperties['storeFile'] ?: '').exists()
+    if (!hasReleaseSigning) {
+        logger.warn("WARNING: keystore.properties found but storeFile '${keystoreProperties['storeFile']}' does not exist at ${file(keystoreProperties['storeFile'] ?: '').absolutePath} — falling back to the DEBUG key. This build is NOT uploadable to Play.")
+    }
+} else {
+    logger.warn("WARNING: android/keystore.properties not found — falling back to the DEBUG key. This build is NOT uploadable to Play.")
+}
+
 android {
     namespace "com.khata.ledger.enterprise"
     compileSdk rootProject.ext.compileSdkVersion
+
     defaultConfig {
         applicationId "com.khata.ledger.enterprise"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+
+        // Bump versionCode on every Play upload; Play rejects a reused code.
+        versionCode 2
+        versionName "1.1.0"
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // The ledger is offline-first and ships no server-rendered strings, so
+        // trimming unused resources keeps the download small.
+        resourceConfigurations += ["en", "hi"]
+
         aaptOptions {
-             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            debuggable false
         }
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/*.kotlin_module', 'META-INF/DEPENDENCIES', 'META-INF/LICENSE*']
+        }
+    }
+
+    bundle {
+        language { enableSplit = true }
+        density { enableSplit = true }
+        abi { enableSplit = true }
+    }
+
+    lint {
+        // A lint warning must not block a release build.
+        abortOnError false
+        checkReleaseBuilds false
     }
 }
 

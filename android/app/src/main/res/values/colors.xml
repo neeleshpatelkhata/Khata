@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the palette tokens in src/styles/theme.css -->
+    <color name="colorPrimary">#6366F1</color>
+    <color name="colorPrimaryDark">#4F46E5</color>
+    <color name="colorAccent">#34D399</color>
+
+    <color name="bgCanvas">#090D16</color>
+    <color name="bgSurface">#0F172A</color>
+    <color name="textMain">#F8FAFC</color>
+</resources>

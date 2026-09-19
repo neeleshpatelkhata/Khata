@@ -1,20 +1,45 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../services/apiClient';
+import { isValidEmail } from '../services/ledgerEngine';
 
-// Custom reactive hook store for Auth & Workspace
+const SESSION_KEY = 'khata_session'; // { user, workspaces, currentWorkspace }
+
+// Custom reactive hook store for Auth & Workspace.
 let listeners = [];
 let state = {
   user: null,
   workspaces: [],
   currentWorkspace: null,
   isAuthenticated: false,
-  isLoading: true,
+  // True only while initAuth() is resolving the stored session on launch, so
+  // the app can show a blank frame instead of flashing the login screen for
+  // an already-signed-in user.
+  isInitializing: true,
+  isLoading: false,
   error: null
 };
 
 function setState(newState) {
   state = { ...state, ...newState };
-  listeners.forEach(l => l(state));
+  listeners.forEach((l) => l(state));
+}
+
+function persistSession(session) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch (e) {
+    console.error('Failed to persist session:', e);
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem('khata_user_profile');
+  localStorage.removeItem('khata_active_ws');
+}
+
+function withCurrency(ws) {
+  return ws ? { ...ws, currency: ws.currency || 'INR' } : ws;
 }
 
 export function useAuthStore() {
@@ -23,44 +48,100 @@ export function useAuthStore() {
   useEffect(() => {
     listeners.push(setStore);
     return () => {
-      listeners = listeners.filter(l => l !== setStore);
+      listeners = listeners.filter((l) => l !== setStore);
     };
   }, []);
 
+  const setRole = (newRole) => {
+    if (!state.user) return;
+    const validRole = newRole === 'STAFF' ? 'STAFF' : 'OWNER';
+    const updatedUser = { ...state.user, role: validRole };
+    persistSession({ user: updatedUser, workspaces: state.workspaces, currentWorkspace: state.currentWorkspace });
+    setState({ user: updatedUser });
+  };
+
+  /**
+   * Save editable profile fields. `id` and `role` are deliberately not taken
+   * from the form — role changes go through setRole so the permission checks
+   * stay in one place.
+   */
+  const updateProfile = (updates = {}) => {
+    if (!state.user) return null;
+    const { id, role, ...safeUpdates } = updates;
+    const updatedUser = { ...state.user, ...safeUpdates };
+
+    if (updatedUser.name) updatedUser.name = String(updatedUser.name).trim();
+    if (updatedUser.email) updatedUser.email = String(updatedUser.email).trim();
+
+    persistSession({ user: updatedUser, workspaces: state.workspaces, currentWorkspace: state.currentWorkspace });
+    setState({ user: updatedUser, error: null });
+
+    // Best-effort push; the profile is a local-first record.
+    apiClient.request('/auth/me', { method: 'PUT', body: JSON.stringify(safeUpdates) }).catch(() => {});
+
+    return updatedUser;
+  };
+
   const login = async (email, password) => {
+    const trimmedEmail = String(email || '').trim();
+    if (!isValidEmail(trimmedEmail)) {
+      setState({ error: 'Please enter a valid email address.' });
+      return false;
+    }
+    if (!password) {
+      setState({ error: 'Please enter your password.' });
+      return false;
+    }
+
     setState({ isLoading: true, error: null });
     try {
       let user, workspaces;
       try {
-        const res = await apiClient.login({ email, password });
+        const res = await apiClient.login({ email: trimmedEmail, password });
         apiClient.setToken(res.data.token);
         user = res.data.user;
         workspaces = res.data.workspaces;
       } catch (apiErr) {
-        if (apiErr.code === 'INVALID_CREDENTIALS') throw apiErr;
-        console.warn('Backend API unreachable, using local standalone login mode:', apiErr);
+        if (apiErr.code === 'INVALID_CREDENTIALS') {
+          setState({ isLoading: false, error: 'Incorrect email or password.' });
+          return false;
+        }
+        if (!apiErr.isOffline) {
+          setState({ isLoading: false, error: apiErr.message || 'Sign in failed.' });
+          return false;
+        }
+
+        // Backend unreachable: fall back to a device-local session keyed by
+        // this email, so the same person reopens the same ledger next time
+        // instead of a fresh one, even without connectivity.
+        console.warn('Backend unreachable, using local standalone login mode:', apiErr.message);
         const localToken = `local_jwt_${Date.now()}`;
         apiClient.setToken(localToken);
+        const localId = `user_local_${trimmedEmail.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
         user = {
-          id: `user_local_${Date.now()}`,
-          email: email || 'accountant@company.com',
-          name: email ? (email.split('@')[0].toUpperCase()) : 'Enterprise Lead Accountant',
-          role: 'ACCOUNTANT'
+          id: localId,
+          email: trimmedEmail,
+          name: trimmedEmail.split('@')[0],
+          role: 'OWNER'
         };
-        workspaces = [{
-          id: `ws_local_${Date.now()}`,
-          name: `${user.name}'s Ledger`,
-          currency: 'INR'
-        }];
+        workspaces = [
+          {
+            id: `ws_${localId}`,
+            name: `${user.name}'s Ledger`,
+            currency: 'INR'
+          }
+        ];
       }
 
-      const primaryWs = workspaces[0] || null;
+      const primaryWs = withCurrency(workspaces[0]);
+      persistSession({ user, workspaces, currentWorkspace: primaryWs });
       setState({
         user,
         workspaces,
         currentWorkspace: primaryWs,
         isAuthenticated: true,
-        isLoading: false
+        isLoading: false,
+        error: null
       });
       return true;
     } catch (err) {
@@ -69,38 +150,58 @@ export function useAuthStore() {
     }
   };
 
-  const register = async (name, email, password, role) => {
+  const register = async (name, email, password, role = 'OWNER') => {
+    const trimmedName = String(name || '').trim();
+    const trimmedEmail = String(email || '').trim();
+
+    if (!trimmedName) {
+      setState({ error: 'Please enter your name.' });
+      return false;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setState({ error: 'Please enter a valid email address.' });
+      return false;
+    }
+    if (!password || password.length < 6) {
+      setState({ error: 'Password must be at least 6 characters.' });
+      return false;
+    }
+
     setState({ isLoading: true, error: null });
     try {
       let user, workspace;
       try {
-        const res = await apiClient.register({ name, email, password, role });
+        const res = await apiClient.register({ name: trimmedName, email: trimmedEmail, password, role });
         apiClient.setToken(res.data.token);
         user = res.data.user;
         workspace = res.data.workspace;
       } catch (apiErr) {
-        console.warn('Backend API unreachable, using local standalone register mode:', apiErr);
+        if (apiErr.code === 'EMAIL_EXISTS') {
+          setState({ isLoading: false, error: 'An account with this email already exists. Try signing in instead.' });
+          return false;
+        }
+        if (!apiErr.isOffline) {
+          setState({ isLoading: false, error: apiErr.message || 'Registration failed.' });
+          return false;
+        }
+
+        console.warn('Backend unreachable, using local standalone register mode:', apiErr.message);
         const localToken = `local_jwt_${Date.now()}`;
         apiClient.setToken(localToken);
-        user = {
-          id: `user_local_${Date.now()}`,
-          name: name || 'Enterprise Admin',
-          email: email || 'admin@khata.pro',
-          role: role || 'ADMIN'
-        };
-        workspace = {
-          id: `ws_local_${Date.now()}`,
-          name: `${user.name}'s Enterprise Workspace`,
-          currency: 'INR'
-        };
+        const localId = `user_local_${trimmedEmail.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+        user = { id: localId, name: trimmedName, email: trimmedEmail, role: role || 'OWNER' };
+        workspace = { id: `ws_${localId}`, name: `${trimmedName}'s Ledger`, currency: 'INR' };
       }
 
+      const lockedWs = withCurrency(workspace);
+      persistSession({ user, workspaces: [lockedWs], currentWorkspace: lockedWs });
       setState({
         user,
-        workspaces: [workspace],
-        currentWorkspace: workspace,
+        workspaces: [lockedWs],
+        currentWorkspace: lockedWs,
         isAuthenticated: true,
-        isLoading: false
+        isLoading: false,
+        error: null
       });
       return true;
     } catch (err) {
@@ -109,73 +210,14 @@ export function useAuthStore() {
     }
   };
 
-  const loginOAuth = async (payload) => {
-    setState({ isLoading: true, error: null });
-    try {
-      let oAuthData;
-      if (typeof payload === 'string') {
-        oAuthData = {
-          provider: payload,
-          providerId: `oauth_${Date.now()}`,
-          email: `user.${payload}@khataledger.com`,
-          name: `${payload.toUpperCase()} Account User`
-        };
-      } else {
-        oAuthData = {
-          provider: payload.provider || 'google',
-          providerId: payload.providerId || `google_${Date.now()}`,
-          email: payload.email || 'user.google@khataledger.com',
-          name: payload.name || 'Google Account User'
-        };
-      }
-
-      let user, workspaces;
-      try {
-        const res = await apiClient.loginOAuth(oAuthData);
-        apiClient.setToken(res.data.token);
-        user = res.data.user;
-        workspaces = res.data.workspaces;
-      } catch (apiErr) {
-        console.warn('Backend API OAuth unreachable, switching to local enterprise auth mode:', apiErr);
-        const localToken = `local_jwt_${Date.now()}`;
-        apiClient.setToken(localToken);
-        user = {
-          id: oAuthData.providerId,
-          email: oAuthData.email,
-          name: oAuthData.name,
-          role: 'ADMIN',
-          provider: oAuthData.provider
-        };
-        workspaces = [{
-          id: `ws_local_${Date.now()}`,
-          name: `${user.name}'s Ledger`,
-          currency: 'INR'
-        }];
-      }
-
-      const primaryWs = (workspaces && workspaces.length > 0)
-        ? workspaces[0]
-        : { id: `ws_${Date.now()}`, name: `${user.name}'s Ledger`, currency: 'INR' };
-
-      setState({
-        user,
-        workspaces: workspaces || [primaryWs],
-        currentWorkspace: primaryWs,
-        isAuthenticated: true,
-        isLoading: false
-      });
-      return true;
-    } catch (err) {
-      setState({ isLoading: false, error: err.message });
-      return false;
-    }
-  };
-
+  /**
+   * Ends the session. This intentionally does NOT touch the per-workspace
+   * ledger data cached under khata_local_ledger_data_<wsId> — signing back
+   * into the same account must find its books exactly as they were left.
+   */
   const logout = () => {
     apiClient.setToken(null);
-    localStorage.removeItem('khata_token');
-    localStorage.removeItem('khata_active_ws');
-    localStorage.removeItem('khata_user_profile');
+    clearSession();
     setState({
       user: null,
       workspaces: [],
@@ -187,51 +229,66 @@ export function useAuthStore() {
   };
 
   const switchWorkspace = (workspaceId) => {
-    const found = state.workspaces.find(w => w.id === workspaceId);
-    if (found) {
-      setState({ currentWorkspace: found });
-    }
+    const found = state.workspaces.find((w) => String(w.id) === String(workspaceId));
+    if (!found) return;
+    const nextWs = withCurrency(found);
+    persistSession({ user: state.user, workspaces: state.workspaces, currentWorkspace: nextWs });
+    setState({ currentWorkspace: nextWs });
   };
 
+  /** Restore a previously signed-in session on app launch. No session = show the login screen. */
   const initAuth = async () => {
-    if (!apiClient.token) {
-      setState({ isLoading: false });
+    const savedToken = localStorage.getItem('khata_token');
+    const savedSessionRaw = localStorage.getItem(SESSION_KEY);
+
+    if (!savedToken || !savedSessionRaw) {
+      clearSession();
+      setState({ isAuthenticated: false, isInitializing: false });
       return;
     }
+
     try {
-      const res = await apiClient.getMe();
-      const wsRes = await apiClient.getWorkspaces();
-      const savedProfile = localStorage.getItem('khata_user_profile');
-      const mergedUser = savedProfile ? { ...res.data.user, ...JSON.parse(savedProfile) } : res.data.user;
+      const session = JSON.parse(savedSessionRaw);
+      if (!session?.user?.id || !session?.currentWorkspace?.id) {
+        throw new Error('Corrupt session');
+      }
 
+      apiClient.setToken(savedToken);
       setState({
-        user: mergedUser,
-        workspaces: wsRes.data,
-        currentWorkspace: wsRes.data[0] || null,
+        user: session.user,
+        workspaces: session.workspaces || [session.currentWorkspace],
+        currentWorkspace: withCurrency(session.currentWorkspace),
         isAuthenticated: true,
-        isLoading: false
+        isInitializing: false
       });
-    } catch (err) {
-      apiClient.setToken(null);
-      setState({ isLoading: false, isAuthenticated: false, user: null });
-    }
-  };
 
-  const updateProfile = (updatedData) => {
-    const updatedUser = { ...state.user, ...updatedData };
-    localStorage.setItem('khata_user_profile', JSON.stringify(updatedUser));
-    setState({ user: updatedUser });
-    return true;
+      // Refresh the profile from the server in the background. A stale local
+      // token (server restarted with a new JWT secret, account deleted, etc.)
+      // must not silently keep the app open on invalid credentials.
+      apiClient
+        .getMe()
+        .catch((err) => {
+          if (!err.isOffline) {
+            console.warn('Session no longer valid on server, signing out:', err.message);
+            logout();
+          }
+        });
+    } catch (e) {
+      console.error('Failed to restore session, signing out:', e);
+      clearSession();
+      apiClient.setToken(null);
+      setState({ isAuthenticated: false, isInitializing: false, user: null, currentWorkspace: null, workspaces: [] });
+    }
   };
 
   return {
     ...store,
+    setRole,
+    updateProfile,
     login,
     register,
-    loginOAuth,
     logout,
     switchWorkspace,
-    initAuth,
-    updateProfile
+    initAuth
   };
 }

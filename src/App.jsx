@@ -1,6 +1,8 @@
 import React, { useState, useEffect, Component } from 'react';
 import { useAuthStore } from './store/authStore.js';
 import { useLedgerStore } from './store/ledgerStore.js';
+import AuthScreen from './components/AuthScreen.jsx';
+import Navbar from './components/Navbar.jsx';
 import ExecutiveDashboard from './components/ExecutiveDashboard.jsx';
 import PartyLedgerView from './components/PartyLedgerView.jsx';
 import AllTransactionsView from './components/AllTransactionsView.jsx';
@@ -11,7 +13,6 @@ import SmartEntryModal from './components/SmartEntryModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import GlobalSearchModal from './components/GlobalSearchModal.jsx';
 import ProfilePageView from './components/ProfilePageView.jsx';
-import AuthScreen from './components/AuthScreen.jsx';
 import BottomMobileNav from './components/BottomMobileNav.jsx';
 import './styles/theme.css';
 
@@ -68,10 +69,10 @@ class ErrorBoundary extends Component {
 import { App as CapApp } from '@capacitor/app';
 
 export default function App() {
-  const { isAuthenticated, isLoading, currentWorkspace, initAuth } = useAuthStore();
+  const { currentWorkspace, isAuthenticated, isInitializing, initAuth } = useAuthStore();
   const store = useLedgerStore();
-  const { activeTab, setActiveTab, fetchWorkspaceData } = store;
-  
+  const { activeTab, setActiveTab, fetchWorkspaceData, resetWorkspace } = store;
+
   const [isSmartEntryOpen, setIsSmartEntryOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -80,12 +81,49 @@ export default function App() {
     initAuth();
   }, []);
 
+  // Load the signed-in workspace's ledger. The state is cleared first so a
+  // slow or failed fetch can never leave a previous account's data on
+  // screen, or bleed unsynced local entries into the next account's cache —
+  // see resetWorkspace() for why this matters on a shared device.
   useEffect(() => {
-    if (isAuthenticated && currentWorkspace?.id) {
+    resetWorkspace();
+    if (currentWorkspace?.id) {
       localStorage.setItem('khata_active_ws', JSON.stringify(currentWorkspace));
       fetchWorkspaceData(currentWorkspace.id);
     }
-  }, [isAuthenticated, currentWorkspace]);
+  }, [currentWorkspace?.id]);
+
+  // Sync browser URL path with App State on popstate (browser back / forward buttons)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/parties/')) {
+        const partyId = path.replace('/parties/', '');
+        setActiveTab('parties', false);
+        const party = store.parties.find(p => String(p.id) === String(partyId));
+        if (party) store.setSelectedParty(party, false);
+      } else if (path === '/parties') {
+        setActiveTab('parties', false);
+      } else if (path === '/transactions') {
+        setActiveTab('transactions', false);
+      } else if (path === '/scanner') {
+        setActiveTab('scanner', false);
+      } else if (path === '/telemetry') {
+        setActiveTab('telemetry', false);
+      } else if (path === '/profile') {
+        setActiveTab('profile', false);
+      } else {
+        setActiveTab('dashboard', false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    handlePopState(); // initial sync
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isAuthenticated, store.parties]);
 
   // Handle Hardware Back Button for Android App (1 step back navigation)
   useEffect(() => {
@@ -111,14 +149,10 @@ export default function App() {
             store.closeTransactionModal();
             return;
           }
-          if (store.selectedParty) {
-            store.setSelectedParty(null);
-            return;
-          }
 
-          // 2. Navigate back to dashboard if on any child screen
-          if (activeTab !== 'dashboard') {
-            setActiveTab('dashboard');
+          // 2. Navigate back using browser history if not on home dashboard
+          if (window.location.pathname !== '/' && window.location.pathname !== '/dashboard') {
+            window.history.back();
             return;
           }
 
@@ -137,39 +171,44 @@ export default function App() {
         backListener.remove();
       }
     };
-  }, [isSmartEntryOpen, isProfileOpen, isSearchOpen, store.isTransactionModalOpen, store.selectedParty, activeTab]);
+  }, [isSmartEntryOpen, isProfileOpen, isSearchOpen, store.isTransactionModalOpen]);
 
-  if (isLoading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-canvas)',
-        color: 'var(--color-purple)',
-        fontWeight: '700'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="mic-pulse" style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--color-purple)', margin: '0 auto 1rem auto' }}></div>
-          Initializing Khata Fintech Environment...
-        </div>
-      </div>
-    );
+  // Resolving the stored session — render nothing rather than flashing the
+  // login screen for someone who is already signed in.
+  if (isInitializing) {
+    return <div style={{ minHeight: '100vh', background: 'var(--bg-canvas)' }} />;
   }
 
-  if (!isAuthenticated || !currentWorkspace) {
-    return <AuthScreen />;
+  if (!isAuthenticated) {
+    return (
+      <ErrorBoundary>
+        <AuthScreen />
+      </ErrorBoundary>
+    );
   }
 
   return (
     <ErrorBoundary>
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', paddingTop: '1rem', paddingBottom: '90px' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', paddingBottom: '90px' }}>
+        {/*
+          The brand/workspace-switcher/search/profile header is intentionally
+          hidden on the Dashboard tab (see ExecutiveDashboard) — it stays
+          exactly as-is on every other tab, so switching workspace, search
+          and sign-out remain one tap away (Parties/Transactions/Backup/
+          Profile) rather than being removed from the app.
+        */}
+        {activeTab !== 'dashboard' && (
+          <Navbar
+            onOpenSearch={() => setIsSearchOpen(true)}
+            onOpenProfile={() => setIsProfileOpen(true)}
+          />
+        )}
+
         <main style={{ flex: 1 }}>
           {activeTab === 'dashboard' && (
-            <ExecutiveDashboard 
-              onOpenSmartEntry={() => setIsSmartEntryOpen(true)} 
-              onNavigateTab={(tab) => setActiveTab(tab)} 
+            <ExecutiveDashboard
+              onOpenSmartEntry={() => setIsSmartEntryOpen(true)}
+              onNavigateTab={(tab) => setActiveTab(tab)}
               onOpenSearch={() => setIsSearchOpen(true)}
               onOpenProfile={() => setIsProfileOpen(true)}
             />
@@ -185,10 +224,10 @@ export default function App() {
         <BottomMobileNav onOpenSmartEntry={() => setIsSmartEntryOpen(true)} />
 
         <TransactionModal />
-        
-        <SmartEntryModal 
-          isOpen={isSmartEntryOpen} 
-          onClose={() => setIsSmartEntryOpen(false)} 
+
+        <SmartEntryModal
+          isOpen={isSmartEntryOpen}
+          onClose={() => setIsSmartEntryOpen(false)}
         />
 
         <UserProfileModal

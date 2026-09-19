@@ -101,8 +101,30 @@ async function restoreFromBackup(backupId) {
   return { success: true, restoredFilename: record.filename, checksum: currentChecksum };
 }
 
+async function createUserSnapshotBackup(workspaceId, userId, { backupName, type = 'MANUAL', dataJson }) {
+  const id = uuidv4();
+  const name = backupName || `Khata_Backup_${new Date().toISOString().split('T')[0]}`;
+  const payloadStr = typeof dataJson === 'string' ? dataJson : JSON.stringify(dataJson || {});
+
+  await run(
+    `INSERT INTO user_backups (id, user_id, workspace_id, backup_name, type, data_json) VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, userId, workspaceId, name, type, payloadStr]
+  );
+
+  return await get('SELECT id, user_id, workspace_id, backup_name, type, created_at FROM user_backups WHERE id = ?', [id]);
+}
+
+async function getUserSnapshotBackups(workspaceId, userId) {
+  return await all(
+    'SELECT id, user_id, workspace_id, backup_name, type, created_at FROM user_backups WHERE workspace_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 20',
+    [workspaceId, userId]
+  );
+}
+
 module.exports = {
   createBackup,
   getBackupTelemetry,
-  restoreFromBackup
+  restoreFromBackup,
+  createUserSnapshotBackup,
+  getUserSnapshotBackups
 };

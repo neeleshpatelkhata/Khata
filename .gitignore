@@ -22,8 +22,24 @@ android/.gradle/
 android/build/
 android/app/build/
 android/local.properties
-android/*.jks
+
+# Release signing material — never commit these. Losing them means you can
+# never publish an update to the Play listing again, so back them up offline.
+android/keystore.properties
+android/app/release.keystore
 *.jks
+*.keystore
+
+# Local one-off keystore/build helper scripts with a hardcoded signing
+# password — kept device-local, never pushed.
+android/app/create_keystore.bat
+android/build_release_aab.bat
+android/run_build.bat
+generate_keystore.js
+
+# Build artefacts
+*.apk
+*.aab
 
 # IDE & System files
 .vscode/

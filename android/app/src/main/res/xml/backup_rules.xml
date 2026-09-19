@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and below (auto backup to the user's Google Drive).
+
+  The ledger lives in the WebView's localStorage under app_webview/, so that
+  directory is what has to survive a device change. Caches and the WebView's
+  HTTP cache are excluded because they are large and worthless in a restore.
+-->
+<full-backup-content>
+    <include domain="file" path="app_webview/" />
+    <include domain="sharedpref" path="." />
+    <exclude domain="file" path="app_webview/Default/Cache/" />
+    <exclude domain="file" path="app_webview/Default/Code Cache/" />
+    <exclude domain="file" path="app_webview/Default/GPUCache/" />
+    <exclude domain="cache" path="." />
+</full-backup-content>

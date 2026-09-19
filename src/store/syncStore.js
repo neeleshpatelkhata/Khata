@@ -110,8 +110,9 @@ export function useSyncStore() {
       }
 
       const res = await apiClient.pushSyncOutbox(workspaceId, state.deviceDeviceId, state.outbox);
+      const result = res?.data || {};
 
-      const resolvedCount = (state.conflictsResolvedTotal + (res.data.conflictsResolved || 0));
+      const resolvedCount = state.conflictsResolvedTotal + (result.conflictsResolved || 0);
       const now = new Date().toISOString();
 
       localStorage.setItem('khata_last_sync', now);
@@ -122,7 +123,7 @@ export function useSyncStore() {
         isSyncing: false,
         lastSyncTime: now,
         conflictsResolvedTotal: resolvedCount,
-        syncStatusMessage: `Sync Completed. ${res.data.processedCount} items pushed, ${res.data.conflictsResolved} conflicts resolved.`
+        syncStatusMessage: `Sync completed. ${result.processedCount ?? 0} items pushed, ${result.conflictsResolved ?? 0} conflicts resolved.`
       });
     } catch (err) {
       console.error('Sync execution failed:', err);
@@ -133,9 +134,17 @@ export function useSyncStore() {
     }
   };
 
+  const clearOutbox = () => {
+    setState({ outbox: [], syncStatusMessage: 'Offline outbox cleared.' });
+  };
+
   return {
     ...store,
+    pendingOutboxCount: store.outbox.length,
     queueOutboxItem,
-    triggerSync
+    triggerSync,
+    // Navbar's manual "sync now" button.
+    triggerManualSync: triggerSync,
+    clearOutbox
   };
 }

@@ -120,6 +120,16 @@ CREATE TABLE IF NOT EXISTS public.backups (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS public.user_backups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    backup_name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'MANUAL',
+    data_json TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- -----------------------------------------------------------------------------
 -- PERFORMANCE INDEXES
 -- -----------------------------------------------------------------------------

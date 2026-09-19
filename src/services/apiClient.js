@@ -28,13 +28,30 @@ class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     const isMultipart = options.body instanceof FormData;
 
+    // Fail fast when the device is offline. Without this the app waits on a
+    // fetch that cannot succeed and every screen feels frozen.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const offlineErr = new Error('Device is offline. Working from local ledger data.');
+      offlineErr.code = 'NETWORK_OFFLINE';
+      offlineErr.isOffline = true;
+      throw offlineErr;
+    }
+
+    // A sleeping free-tier backend can hold a connection open for a minute.
+    // Cap it so the UI falls back to local data promptly.
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs ?? (isMultipart ? 60000 : 12000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const { timeoutMs: _ignored, ...fetchOptions } = options;
     const config = {
+      ...fetchOptions,
       method: options.method || 'GET',
+      signal: controller.signal,
       headers: {
         ...this.getHeaders(isMultipart),
         ...options.headers
-      },
-      ...options
+      }
     };
 
     try {
@@ -42,8 +59,9 @@ class ApiClient {
       const contentType = response.headers.get('content-type') || '';
 
       if (!contentType.includes('application/json')) {
-        // Server returned HTML (e.g. index.html from static dev server or Capacitor local server)
-        const text = await response.text();
+        // Server returned HTML (e.g. index.html from a static dev server or the
+        // Capacitor local server) rather than the API.
+        await response.text().catch(() => '');
         const err = new Error('Backend API server is offline or unreachable. Local standalone mode active.');
         err.code = 'LOCAL_OFFLINE';
         err.isOffline = true;
@@ -63,20 +81,41 @@ class ApiClient {
 
       return data;
     } catch (err) {
+      if (err.name === 'AbortError') {
+        const timeoutErr = new Error('Backend did not respond in time. Working from local ledger data.');
+        timeoutErr.code = 'TIMEOUT';
+        timeoutErr.isOffline = true;
+        throw timeoutErr;
+      }
       if (err.name === 'SyntaxError' || err.message?.includes('JSON')) {
         const parseErr = new Error('Backend server is offline or returned invalid response. Standalone local mode enabled.');
         parseErr.code = 'LOCAL_OFFLINE';
         parseErr.isOffline = true;
         throw parseErr;
       }
-      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      if (err.name === 'TypeError') {
         const netErr = new Error('Network connection offline. Operating in local outbox mode.');
         netErr.code = 'NETWORK_OFFLINE';
         netErr.isOffline = true;
         throw netErr;
       }
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
+  }
+
+  // Generic verbs for callers that talk to endpoints not wrapped below.
+  get(endpoint, options = {}) {
+    return this.request(endpoint, { ...options, method: 'GET' });
+  }
+
+  post(endpoint, body, options = {}) {
+    return this.request(endpoint, {
+      ...options,
+      method: 'POST',
+      body: body instanceof FormData ? body : JSON.stringify(body)
+    });
   }
 
   // Auth endpoints
@@ -184,6 +223,32 @@ class ApiClient {
     });
   }
 
+  // AI Assist — proxied through the backend so the Gemini key never ships
+  // inside the client bundle (Vite would otherwise inline it in plain text).
+  parseInvoiceImage(imageBase64, mimeType) {
+    return this.request('/ai/parse-invoice', {
+      method: 'POST',
+      body: JSON.stringify({ imageBase64, mimeType }),
+      timeoutMs: 30000
+    });
+  }
+
+  parseNaturalLanguagePrompt(text, partyNames) {
+    return this.request('/ai/parse-text', {
+      method: 'POST',
+      body: JSON.stringify({ text, partyNames }),
+      timeoutMs: 20000
+    });
+  }
+
+  transcribeAudio(audioBase64, mimeType, languageCode) {
+    return this.request('/ai/transcribe-audio', {
+      method: 'POST',
+      body: JSON.stringify({ audioBase64, mimeType, languageCode }),
+      timeoutMs: 30000
+    });
+  }
+
   // Backup Telemetry
   getBackupTelemetry() {
     return this.request('/backups/telemetry');
@@ -195,6 +260,17 @@ class ApiClient {
 
   restoreBackup(backupId) {
     return this.request(`/backups/${backupId}/restore`, { method: 'POST' });
+  }
+
+  createUserBackup(workspaceId, backupData) {
+    return this.request(`/workspaces/${workspaceId}/user-backups`, {
+      method: 'POST',
+      body: JSON.stringify(backupData)
+    });
+  }
+
+  getUserBackups(workspaceId) {
+    return this.request(`/workspaces/${workspaceId}/user-backups`);
   }
 }
 
