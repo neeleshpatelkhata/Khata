@@ -60,10 +60,15 @@
 
     <!--
       Smart Voice Entry: the WebView's getUserMedia({audio:true}) call is
-      routed by Capacitor's WebChromeClient to a runtime permission request,
-      which only appears if this is declared here.
+      routed by Capacitor's BridgeWebChromeClient to a runtime permission
+      request for BOTH of these together (see
+      node_modules/@capacitor/android/.../BridgeWebChromeClient.java) — it
+      only grants mic access if every permission in that request is granted,
+      so MODIFY_AUDIO_SETTINGS must be declared too or the whole request is
+      silently denied with no dialog ever shown.
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
