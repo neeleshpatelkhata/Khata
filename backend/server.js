@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const { initSchema, migrateSchema } = require('./src/database/db');
 const apiRoutes = require('./src/routes/api');
@@ -13,6 +14,12 @@ app.use(cors());
 // the 100kb default is too small for either, so it's raised here.
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// A handful of plain legal pages (privacy policy, etc.) — kept here, not in
+// frontend/, so this service can serve them on its own stable HTTPS URL for
+// the Play Console listing regardless of where/whether the frontend is
+// deployed.
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Serve API routes
 app.use('/api/v1', apiRoutes);
